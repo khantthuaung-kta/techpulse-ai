@@ -93,6 +93,8 @@ Run `python -m src.main --dry-run` from the repository root. When an eligible st
 
 For GitHub Actions, set `AI_PROVIDER`, `AI_MODEL`, and `GROQ_FREE_TIER_CONFIRMED` as Actions variables and `GROQ_API_KEY` as an Actions secret. Verify in preview mode before enabling a live Telegram send.
 
+Groq selects a publisher excerpt by ID. The app resolves that ID to the original text and still rejects summaries with unsupported numbers or invalid Burmese fields.
+
 ## GitHub Actions daily delivery
 
 The [daily workflow](.github/workflows/daily-news.yml) runs `python -m src.main --send` on Python 3.12 at 07:00 every day in `Asia/Yangon`. The workflow must be on the repository's default branch for scheduled delivery. GitHub can delay or drop scheduled runs during high load. [GitHub schedule documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)

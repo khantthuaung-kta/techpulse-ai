@@ -210,7 +210,9 @@ def groq_env(ai_env, monkeypatch):
     monkeypatch.setenv("GROQ_FREE_TIER_CONFIRMED", "true")
 
 
-def groq_response(value=OUTPUT, *, finish="stop"):
+def groq_response(value=None, *, finish="stop"):
+    if value is None:
+        value = {**OUTPUT, "evidence": "0"}
     response = Mock(status_code=200)
     response.json.return_value = {"choices": [{
         "finish_reason": finish, "message": {"content": json.dumps(value)},
@@ -231,7 +233,9 @@ def test_groq_dry_run_renders_burmese(article, groq_env, monkeypatch, capsys):
     assert options["headers"] == {"Authorization": "Bearer mock-groq-key"}
     assert options["allow_redirects"] is False and options["timeout"] == (5, 15)
     assert options["json"]["model"] == "openai/gpt-oss-20b"
-    assert options["json"]["response_format"]["json_schema"]["strict"]
+    schema = options["json"]["response_format"]["json_schema"]
+    assert schema["strict"] and schema["schema"]["properties"]["evidence"]["enum"] == ["", "0"]
+    assert json.loads(options["json"]["messages"][1]["content"])["excerpts"] == {"0": DESCRIPTION}
     assert "tools" not in options["json"]
 
 
@@ -272,7 +276,22 @@ def test_groq_timeouts_back_off_and_fall_back(article, groq_env, monkeypatch, ca
     groq_response(finish="length"),
     groq_response("invalid"),
     groq_response({**OUTPUT, "evidence": "This is not in the source."}),
+    groq_response({**OUTPUT, "evidence": "0", "summary": "Python 9.99 အသစ် ထွက်လာသည်။"}),
 ])
 def test_groq_malformed_or_unsupported_output_falls_back(article, groq_env, monkeypatch, response):
     monkeypatch.setattr(requests, "post", Mock(return_value=response))
     assert configured_summaries([article]) == {}
+
+
+def test_groq_requires_attribution_for_claimed_results(article, groq_env, monkeypatch):
+    article = replace(article, title="Developer claims to improve Python 3.12")
+    monkeypatch.setattr(requests, "post", Mock(return_value=groq_response()))
+    assert configured_summaries([article]) == {}
+
+
+def test_groq_generated_json_rejection_only_skips_one_item(article, groq_env, monkeypatch):
+    invalid = Mock(status_code=400)
+    invalid.json.return_value = {"error": {"code": "json_validate_failed"}}
+    other = replace(article, url="https://example.org/another")
+    monkeypatch.setattr(requests, "post", Mock(side_effect=[invalid, groq_response()]))
+    assert set(configured_summaries([article, other])) == {other.url}
