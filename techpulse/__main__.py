@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from .ai_config import configured_summaries, load_summary_settings
 from .delivery import YANGON, already_claimed, deliver, delivery_date, open_ledger
 from .digest import render_digest
+from .interactive import run_poller
 from .ledger import LedgerError, article_fingerprints, destination_key, sent_history
 from .personalization import explain_ranking, load_preferences, rank_digest
 from .sources import collect, load_feeds
@@ -24,16 +25,20 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--dry-run", action="store_true", help="Print the digest to the terminal.")
     mode.add_argument("--send", action="store_true", help="Deliver the digest to Telegram.")
     mode.add_argument("--test-telegram", action="store_true", help="Send a Telegram connection test message.")
+    mode.add_argument("--poll-telegram", action="store_true", help="Run the interactive Telegram bot locally.")
     parser.add_argument("--feeds", type=Path, default=Path("feeds.toml"), help="Path to the news source registry.")
     parser.add_argument("--preferences", type=Path, help="Path to ranking preferences. Defaults to preferences.toml if present.")
     parser.add_argument("--explain", action="store_true", help="Show ranking factors with --dry-run.")
     parser.add_argument("--learn-tip", action="store_true", help="Include a reading exercise linked to one selected source.")
+    parser.add_argument("--poll-once", action="store_true", help="Process one update batch with --poll-telegram.")
     args = parser.parse_args(argv)
     if args.explain and not args.dry_run:
         parser.error("--explain requires --dry-run.")
+    if args.poll_once and not args.poll_telegram:
+        parser.error("--poll-once requires --poll-telegram.")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-    if args.send or args.test_telegram:
+    if args.send or args.test_telegram or args.poll_telegram:
         # urllib3 debug output includes the Telegram request path and its token.
         logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
         try:
@@ -80,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as error:
         LOG.error("Cannot load ranking preferences (%s).", error)
         return 1
+    if args.poll_telegram:
+        return run_poller(token, chat_id, feeds, preferences, once=args.poll_once)
 
     articles, usable = collect(feeds)
     if not usable:

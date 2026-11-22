@@ -7,3 +7,4 @@ __pycache__/
 .coverage
 .techpulse-summaries.sqlite3*
 .techpulse-delivery.sqlite3*
+.techpulse-interactive.sqlite3*

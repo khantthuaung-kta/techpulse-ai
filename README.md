@@ -135,3 +135,26 @@ Each repository reserves one delivery slot per day. The record contains an opaqu
 For alerts, enable failure-only **GitHub Actions** email or web notifications for the repository account responsible for the schedule. GitHub routes scheduled workflow notifications to the account associated with that schedule. The workflow also writes a failure annotation and job summary. Alerts do not call Telegram. A missing scheduled run will not generate a failure notification, so confirm a real **schedule** event and its Telegram receipt after deployment. [GitHub Actions notifications](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs)
 
 The ledger uses repository storage and the existing GitHub Actions runner. No external database, billing account, or new secret is needed.
+
+## Interactive Telegram bot
+
+Run the poller in the foreground when you want to use interactive commands:
+
+```sh
+python -m src.main --poll-telegram
+```
+
+Stop it with Ctrl+C. To process one batch of up to 20 updates and exit, use `python -m src.main --poll-telegram --poll-once`. The first batch can wait up to 20 seconds for Telegram to return updates. Both modes use the existing `--feeds` and `--preferences` options. The daily GitHub Actions workflow still sends the scheduled digest through its separate delivery ledger. Interactive polling requires no inbound port, scheduled job, or always-on hosting.
+
+The poller uses the existing bot token. By default, it listens in the numeric `TELEGRAM_CHAT_ID` chat. If the daily digest goes to a channel or another destination, set the numeric `TELEGRAM_INTERACTIVE_CHAT_ID` for a private chat or group in your local `.env`. In a private chat, only the matching user ID is authorized by default. For a group, set `TELEGRAM_ALLOWED_USER_IDS` to a comma-separated list of numeric user IDs and address commands to the bot, for example `/latest@your_bot_username`. Group replies are visible to group members. Use a private chat for private bookmarks. Anonymous senders, other chats, and bot accounts are ignored.
+
+- `/start` and `/help` show available commands.
+- `/latest` shows ranked stories using your saved topic preference. `/ai`, `/japan`, and `/opensource` request an explicit category.
+- `/settings` shows your current preference. Set it with `/settings ai`, `/settings japan`, or `/settings opensource`. `/settings all` restores the default.
+- `/save 1` bookmarks the first item in your last successful news reply. `/save` lists up to 20 bookmarks, and `/save clear` removes yours. Wait at least three seconds between commands. The numbered results can be bookmarked for 15 minutes while the poller stays running.
+
+Interactive news uses publisher headlines and original links. It does not call Gemini or Groq. The poller caches public sources for five minutes and can reuse a snapshot up to 20 minutes old while sources are unavailable. It starts refreshing sources only after an authorized news command.
+
+The ignored `.techpulse-interactive.sqlite3` file stores polling offsets and preferences or bookmarks that you explicitly save. It does not hold Telegram credentials or command history. Use `TECHPULSE_INTERACTIVE_DB` for a different local path and keep it outside version control. Preferences and bookmarks are scoped to your chat and user. Rotating the bot token changes that scope. Numbered news results are kept in memory and reset when the process stops.
+
+For a local smoke test, start the poller and send `/help`, wait three seconds, then send `/latest`. Expect a command list followed by numbered source links or a clear no-stories message. Run only one poller per bot. If Telegram reports a conflict, check for another polling process or an existing webhook. TechPulse AI leaves webhook configuration unchanged. Updates older than ten minutes are ignored. The poller saves the update offset before replying, so a failed or ambiguous reply is not replayed automatically. Send a fresh command if necessary. [Telegram polling documentation](https://core.telegram.org/bots/api#getupdates)
