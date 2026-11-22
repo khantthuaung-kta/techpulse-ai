@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
+DESCRIPTION_LIMIT = 3000
+
 
 class Category(StrEnum):
     AI = "AI & LLM"
@@ -27,6 +29,7 @@ class Article:
     published_at: datetime
     category: Category
     popularity: int = 0
+    description: str = ""
 
 
 TOPICS = {

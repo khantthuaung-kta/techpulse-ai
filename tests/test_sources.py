@@ -8,6 +8,7 @@ from techpulse.sources import HN, Feed, collect, fetch_feed, load_feeds
 
 RSS = b"""<rss version="2.0"><channel><title>Publisher</title>
 <item><title>Release notes</title><link>/article</link>
+<description><![CDATA[<p>A public <b>release description</b>.</p>]]></description>
 <pubDate>Sun, 22 Nov 2026 07:30:00 +0900</pubDate></item>
 <item><title>Missing date</title><link>/missing</link></item>
 <item><title>Missing link</title><pubDate>Sat, 21 Nov 2026 14:30:00 GMT</pubDate></item>
@@ -57,6 +58,8 @@ def test_collect_rss_hn_and_partial_failure(monkeypatch, caplog):
         Category.JAPAN, datetime(2026, 11, 21, 22, 30, tzinfo=UTC),
     )
     assert hn.source == "Hacker News"
+    assert rss.description == "A public release description."
+    assert hn.description == ""
     assert hn.category == Category.PROGRAMMING
     assert hn.popularity == 56
     assert calls.count(f"{HN}/item/1.json") == 1
@@ -71,12 +74,15 @@ def test_atom_uses_published_before_updated(monkeypatch):
         <published>2026-11-21T09:00:00Z</published>
         <updated>2026-11-22T09:00:00Z</updated></entry>
         <entry><title>Updates only</title><link href="/updates"/>
-        <updated>2026-11-22T11:00:00Z</updated></entry></feed>"""
+        <updated>2026-11-22T11:00:00Z</updated>
+        <content type="html">&lt;p&gt;Inline publisher content.&lt;/p&gt;</content>
+        </entry></feed>"""
     monkeypatch.setattr(requests, "get", lambda url, **kw: response(url, content=atom))
     first, second = fetch_feed(FEED)
     assert first.published_at == datetime(2026, 11, 21, 9, tzinfo=UTC)
     assert first.category == Category.AI
     assert second.published_at == datetime(2026, 11, 22, 11, tzinfo=UTC)
+    assert second.description == "Inline publisher content."
 
 
 def test_config_validation(tmp_path):

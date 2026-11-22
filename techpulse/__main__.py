@@ -5,8 +5,11 @@ import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from .articles import select_articles
 from .digest import render_digest
+from .gemini import configured_summaries
 from .sources import collect, load_feeds
 from .telegram import TelegramError, load_credentials, send_connection_test, send_digest
 
@@ -54,11 +57,14 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(UTC)
     selected = select_articles(articles, now, timedelta(hours=24))
     if args.dry_run:
-        print(render_digest(selected, now)[0])
+        load_dotenv(Path(".env"))
+    summaries = configured_summaries(selected)
+    if args.dry_run:
+        print(render_digest(selected, now, summaries=summaries)[0])
         return 0
 
     try:
-        send_digest(render_digest(selected, now, telegram=True), token, chat_id)
+        send_digest(render_digest(selected, now, telegram=True, summaries=summaries), token, chat_id)
     except TelegramError as error:
         LOG.error("%s", error)
         return 1

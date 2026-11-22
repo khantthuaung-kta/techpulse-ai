@@ -49,8 +49,30 @@ Selection considers the last 24 hours. It ranks by freshness, specific topic mat
 ## Extension points
 
 - `techpulse.sources` turns source responses into `Article` records.
-- `techpulse.articles` categorizes and ranks articles. A future summarizer can consume the selected records before rendering.
+- `techpulse.articles` categorizes and ranks articles. The summarizer consumes selected records before rendering.
 - `techpulse.digest` renders the preview and Telegram messages. `techpulse.telegram` handles delivery.
+
+## Optional Burmese summaries with Gemini
+
+Gemini is disabled by default. For a $0 budget, create a key in a dedicated [Google AI Studio project](https://aistudio.google.com/projects) that has **no Cloud Billing account linked**. Keep billing unlinked. The app requires explicit confirmation before making inference calls because the key alone cannot verify the project's billing tier. Use Gemini 3.1 Flash-Lite, which Google lists for free-tier text input and output. The adapter uses text generation only. [Model pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.1-flash-lite) · [Billing tiers](https://ai.google.dev/gemini-api/docs/billing)
+
+Set these values in your ignored local `.env`:
+
+```dotenv
+AI_PROVIDER=gemini
+AI_MODEL=gemini-3.1-flash-lite
+GEMINI_FREE_TIER_CONFIRMED=true
+GEMINI_API_KEY=
+AI_SUMMARY_CACHE=.techpulse-summaries.sqlite3
+```
+
+Fill in `GEMINI_API_KEY` locally. The SQLite cache is optional. Use a persistent local path to reuse validated summaries across invocations. Entries are keyed by article URL and evidence, model, and prompt version. The hosted workflow leaves the cache unset because the runner is ephemeral.
+
+Run `python -m src.main --dry-run` to preview with the configured AI provider. It can consume free Gemini quota and prints a Burmese headline, factual summary, career relevance, and the original article URL when adequate publisher text exists. Publisher feed descriptions or inline feed text are labeled **Headline/description-based**. Hacker News entries often contain only a headline. Headline-only items and failed or rejected summaries keep the original headline and URL. The collector uses feed-supplied text and does not request or bypass access controls on linked pages. Source quotes and numbers are checked against the supplied evidence, but an accepted model response can still misstate the source.
+
+For GitHub Actions, add `GEMINI_API_KEY` as an **Actions secret**. Add `AI_PROVIDER=gemini`, `AI_MODEL=gemini-3.1-flash-lite`, and `GEMINI_FREE_TIER_CONFIRMED=true` under **Actions variables**. Try the preview before enabling a live manual send. The date in the digest heading uses Yangon time. Individual article timestamps remain UTC.
+
+Expect one serial request per eligible uncached item, with at most 10 first attempts per digest. A timeout or transient server error allows one retry after a delay. Quota and authentication failures stop further Gemini requests for that digest. If free-tier access or quota runs out, leave billing disabled and use the original-headline fallback.
 
 ## GitHub Actions daily delivery
 

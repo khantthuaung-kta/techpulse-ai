@@ -8,13 +8,14 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin
 
 import feedparser
 import requests
 
-from .articles import Article, Category, classify, valid_url
+from .articles import DESCRIPTION_LIMIT, Article, Category, classify, valid_url
 
 LOG = logging.getLogger(__name__)
 HN = "https://hacker-news.firebaseio.com/v0"
@@ -24,6 +25,39 @@ USER_AGENT = "TechPulseAI/0.1 (technology digest reader)"
 
 class SourceError(Exception):
     """A source did not return usable data."""
+
+
+class DescriptionParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+        self.ignored = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style"}:
+            self.ignored += 1
+        elif tag in {"br", "p", "div", "li"}:
+            self.parts.append(" ")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"}:
+            self.ignored = max(0, self.ignored - 1)
+        elif tag in {"p", "div", "li"}:
+            self.parts.append(" ")
+
+    def handle_data(self, data: str) -> None:
+        if not self.ignored:
+            self.parts.append(data)
+
+
+def plain_description(value: str) -> str:
+    parser = DescriptionParser()
+    try:
+        parser.feed(value[:DESCRIPTION_LIMIT * 4])
+        parser.close()
+    except (ValueError, AssertionError):
+        return ""
+    return " ".join("".join(parser.parts).split())[:DESCRIPTION_LIMIT]
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +116,17 @@ def fetch_feed(feed: Feed) -> list[Article]:
             published = datetime(*date[:6], tzinfo=UTC)
         except ValueError:
             continue
-        articles.append(Article(title, url, feed.name, published, classify(title, feed.category)))
+        description = plain_description(entry.get("summary", ""))
+        if not description:
+            for content in entry.get("content", ()):
+                if content.get("type") in {"text/plain", "text/html", "application/xhtml+xml"}:
+                    description = plain_description(content.get("value", ""))
+                    if description:
+                        break
+        articles.append(Article(
+            title, url, feed.name, published, classify(title, feed.category),
+            description=description,
+        ))
     return articles
 
 
