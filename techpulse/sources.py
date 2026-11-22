@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 import tomllib
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -116,6 +117,15 @@ def load_feeds(path: Path) -> list[Feed | ReleaseSource]:
 
 
 def get(url: str) -> requests.Response:
+    try:
+        response = requests.get(url, timeout=TIMEOUT, headers={"User-Agent": USER_AGENT})
+    except (requests.Timeout, requests.ConnectionError):
+        pass
+    else:
+        if response.status_code not in {502, 503, 504}:
+            response.raise_for_status()
+            return response
+    time.sleep(1)
     response = requests.get(url, timeout=TIMEOUT, headers={"User-Agent": USER_AGENT})
     response.raise_for_status()
     return response

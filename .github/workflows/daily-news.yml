@@ -19,10 +19,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  daily-news:
-    name: Build and deliver the news digest
+  preview:
+    name: Preview the daily digest
+    if: github.event_name == 'workflow_dispatch' && !inputs.send_to_telegram
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run regression tests
+        run: python -m pytest -q
+      - name: Preview the news digest
+        env:
+          AI_PROVIDER: ${{ vars.AI_PROVIDER }}
+          AI_MODEL: ${{ vars.AI_MODEL }}
+          GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_FREE_TIER_CONFIRMED: ${{ vars.GROQ_FREE_TIER_CONFIRMED }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python -m src.main --dry-run
+
+  daily-news:
+    name: Build and deliver the news digest
+    if: github.event_name == 'schedule' || inputs.send_to_telegram
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
 
     steps:
       - name: Check out the repository
@@ -38,20 +70,13 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Preview the news digest
-        if: github.event_name == 'workflow_dispatch' && !inputs.send_to_telegram
-        env:
-          AI_PROVIDER: ${{ vars.AI_PROVIDER }}
-          AI_MODEL: ${{ vars.AI_MODEL }}
-          GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GROQ_FREE_TIER_CONFIRMED: ${{ vars.GROQ_FREE_TIER_CONFIRMED }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: python -m src.main --dry-run
+      - name: Run regression tests
+        run: python -m pytest -q
 
       - name: Send the news digest to Telegram
-        if: github.event_name == 'schedule' || inputs.send_to_telegram
         env:
+          GH_TOKEN: ${{ github.token }}
+          TECHPULSE_GITHUB_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           AI_PROVIDER: ${{ vars.AI_PROVIDER }}
@@ -67,9 +92,13 @@ jobs:
             exit 1
           fi
 
-          echo "Collecting news and sending the TechPulse AI digest to Telegram."
+          TECHPULSE_RUN_CREATED_AT="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq '.created_at')"
+          export TECHPULSE_RUN_CREATED_AT
+          echo "Collecting news and checking the daily Telegram delivery ledger."
           python -m src.main --send
 
       - name: Report workflow failure
         if: failure()
-        run: echo "::error::The digest workflow failed. Check the first failed step before rerunning."
+        run: |
+          echo "::error::The digest workflow failed. Check the first failed step before rerunning."
+          echo "Delivery failed. Verify Telegram and the daily ledger before attempting recovery." >> "$GITHUB_STEP_SUMMARY"

@@ -176,6 +176,9 @@ def test_send_includes_burmese_and_original_url(article, ai_env, monkeypatch, tm
     (tmp_path / "feeds.toml").write_text("feeds = []")
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:mock-token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "-42")
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.delenv("TECHPULSE_RUN_CREATED_AT", raising=False)
+    monkeypatch.setenv("TECHPULSE_DELIVERY_DB", str(tmp_path / "delivery.sqlite3"))
     monkeypatch.setattr(cli, "collect", lambda feeds: ([article], True))
     delivered = []
 
@@ -187,7 +190,7 @@ def test_send_includes_burmese_and_original_url(article, ai_env, monkeypatch, tm
         delivered.append(kwargs["json"]["text"])
         response = requests.Response()
         response.status_code = 200
-        response._content = b'{"ok":true}'
+        response._content = b'{"ok":true,"result":{"message_id":12}}'
         return response
 
     monkeypatch.setattr(requests, "post", post)

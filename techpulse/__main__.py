@@ -8,10 +8,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .ai_config import configured_summaries, load_summary_settings
+from .delivery import YANGON, already_claimed, deliver, delivery_date, open_ledger
 from .digest import render_digest
+from .ledger import LedgerError, article_fingerprints, destination_key, sent_history
 from .personalization import explain_ranking, load_preferences, rank_digest
 from .sources import collect, load_feeds
-from .telegram import TelegramError, load_credentials, send_connection_test, send_digest
+from .telegram import TelegramError, load_credentials, send_connection_test
 
 LOG = logging.getLogger(__name__)
 
@@ -48,6 +50,25 @@ def main(argv: list[str] | None = None) -> int:
         LOG.info("Telegram test message delivered.")
         return 0
 
+    if args.send:
+        try:
+            started = datetime.now(UTC)
+            day = delivery_date(started)
+            today = started.astimezone(YANGON).date()
+            if day > today:
+                raise LedgerError("The digest date is in the future.")
+            if day < today:
+                LOG.info("Original run date %s has passed. Skipping stale delivery.", day)
+                return 0
+            ledger = open_ledger()
+            if already_claimed(ledger, day):
+                return 0
+            destination = destination_key(token, chat_id)
+            seen = sent_history(ledger, day, destination)
+        except LedgerError as error:
+            LOG.error("%s", error)
+            return 1
+
     try:
         feeds = load_feeds(args.feeds)
     except (OSError, ValueError) as error:
@@ -67,14 +88,23 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.dry_run:
         load_dotenv(Path(".env"))
+    fetched = len(articles)
+    if args.send:
+        articles = [article for article in articles if not article_fingerprints(article) & seen]
+    skipped = fetched - len(articles)
     settings = load_summary_settings()
     now = datetime.now(UTC)
     ranked = rank_digest(
         articles, now, preferences, prefer_publisher_text=settings.provider is not None
     )
     selected = [story.article for story in ranked]
-    LOG.info("Selected %d distinct articles from %d source results.", len(selected), len(articles))
+    LOG.info("Digest counts fetched=%d previously_delivered=%d filtered=%d selected=%d.",
+             fetched, skipped, len(articles) - len(selected), len(selected))
+    if args.send and not selected:
+        LOG.info("No eligible unsent stories. No Telegram message or daily claim created.")
+        return 0
     summaries = configured_summaries(selected, settings)
+    LOG.info("Digest summary count translated=%d selected=%d.", len(summaries or {}), len(selected))
     if args.dry_run:
         print(render_digest(selected, now, summaries=summaries, learn_tip=args.learn_tip)[0])
         if args.explain and ranked:
@@ -83,10 +113,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        send_digest(render_digest(
-            selected, now, telegram=True, summaries=summaries, learn_tip=args.learn_tip
-        ), token, chat_id)
-    except TelegramError as error:
+        if datetime.now(UTC).astimezone(YANGON).date() != day:
+            LOG.info("Digest collection crossed the Yangon date boundary. Skipping stale delivery.")
+            return 0
+        messages = render_digest(selected, now, telegram=True, summaries=summaries, learn_tip=args.learn_tip)
+        if not deliver(ledger, day, destination, selected, messages, token, chat_id):
+            return 0
+    except (LedgerError, TelegramError) as error:
         LOG.error("%s", error)
         return 1
     LOG.info("Delivered digest with %d articles.", len(selected))

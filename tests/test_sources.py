@@ -26,6 +26,7 @@ def response(url, *, content=b"", status=200):
 
 
 def test_collect_rss_hn_and_partial_failure(monkeypatch, caplog):
+    monkeypatch.setattr("techpulse.sources.time.sleep", lambda seconds: None)
     urls = {
         FEED.url: RSS,
         f"{HN}/topstories.json": b"[1, 2]",
@@ -64,6 +65,8 @@ def test_collect_rss_hn_and_partial_failure(monkeypatch, caplog):
     assert hn.category == Category.PROGRAMMING
     assert hn.popularity == 56
     assert calls.count(f"{HN}/item/1.json") == 1
+    assert calls.count(f"{HN}/item/3.json") == 2
+    assert calls.count(unavailable.url) == 2
     assert "invalid RSS or Atom" in caplog.text
     assert "HTTP 503" in caplog.text
     assert "Timeout" in caplog.text
