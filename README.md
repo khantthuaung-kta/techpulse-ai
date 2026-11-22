@@ -1,6 +1,10 @@
 # TechPulse AI
 
-TechPulse AI collects recent technology news from Hacker News and trusted RSS or Atom feeds and sends a daily Telegram digest. Run the CLI once per digest.
+TechPulse AI delivers a daily Telegram digest for a developer preparing for Japan IT work. It ranks Hacker News, publisher feeds, and public GitHub releases for Python, FastAPI, React, Odoo, and related interests. Optional free-tier inference adds Burmese summaries backed by publisher excerpts. GitHub Actions handles scheduled delivery, and a local poller handles interactive commands.
+
+[Architecture and delivery diagrams](docs/architecture.md) · [Deployment and recovery](docs/deployment.md) · [Portfolio demo and Japanese overview](docs/portfolio.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+
+For a credential-free preview, run `python -m scripts.demo` after installing the dependencies. It uses historical source fixtures and makes no network requests.
 
 ## Run locally
 

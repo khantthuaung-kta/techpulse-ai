@@ -28,12 +28,13 @@ from facts about the story. Preserve product names and version numbers. Do not i
 quotes, numbers, dates, job or visa details. Return plain text fields with no HTML, Markdown or links.
 Include an exact contiguous quote from the description supporting the summary in evidence.
 If there is insufficient evidence, return empty fields."""
+SCHEMA_PROPERTIES = {
+    name: {"type": "string", "description": f"At most {limit} characters."}
+    for name, limit in TEXT_LIMITS.items()
+}
 SCHEMA = {
     "type": "object",
-    "properties": {
-        name: {"type": "string", "description": f"At most {limit} characters."}
-        for name, limit in TEXT_LIMITS.items()
-    },
+    "properties": SCHEMA_PROPERTIES,
     "required": list(TEXT_LIMITS),
     "additionalProperties": False,
 }

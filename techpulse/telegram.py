@@ -45,7 +45,7 @@ def send_messages(
     on_confirmed: Callable[[int, int], None] | None = None,
 ) -> None:
     for delivered, message in enumerate(messages):
-        payload = {
+        payload: dict[str, object] = {
             "chat_id": chat_id,
             "text": message,
             "link_preview_options": {"is_disabled": True},

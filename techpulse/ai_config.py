@@ -2,6 +2,7 @@
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from .articles import Article
 from .summaries import Summary, SummaryProvider, summarize_articles
 
 LOG = logging.getLogger(__name__)
-PROVIDERS = {
+PROVIDERS: dict[str, tuple[Callable[[str, str], SummaryProvider], str, str]] = {
     "gemini": (gemini.GeminiProvider, gemini.MODEL, "GEMINI"),
     "groq": (groq.GroqProvider, groq.MODEL, "GROQ"),
 }

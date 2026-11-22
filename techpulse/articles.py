@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import TypeGuard
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 DESCRIPTION_LIMIT = 3000
@@ -77,7 +78,7 @@ def classify(title: str, default: Category | None = None) -> Category | None:
     return None
 
 
-def valid_url(value: object) -> bool:
+def valid_url(value: object) -> TypeGuard[str]:
     if not isinstance(value, str) or not value or any(char.isspace() or ord(char) < 32 for char in value):
         return False
     try:

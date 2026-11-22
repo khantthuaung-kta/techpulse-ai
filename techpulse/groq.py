@@ -6,7 +6,9 @@ import time
 
 import requests
 
-from .summaries import PROMPT, SCHEMA, TEXT_LIMITS, ProviderUnavailable, SummaryError, validate_summary
+from .summaries import (
+    PROMPT, SCHEMA, SCHEMA_PROPERTIES, TEXT_LIMITS, ProviderUnavailable, SummaryError, validate_summary,
+)
 
 MODEL = "openai/gpt-oss-20b"
 ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
@@ -67,21 +69,22 @@ class GroqProvider:
         schema = {
             **SCHEMA,
             "properties": {
-                **SCHEMA["properties"],
+                **SCHEMA_PROPERTIES,
                 "evidence": {"type": "string", "enum": ["", *excerpts]},
             },
         }
+        user_message = {"role": "user", "content": json.dumps(
+            {
+                "headline": prompt_excerpt(headline),
+                "excerpts": {key: prompt_excerpt(text) for key, text in excerpts.items()},
+            },
+            ensure_ascii=False,
+        )}
         payload = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": GROQ_PROMPT},
-                {"role": "user", "content": json.dumps(
-                    {
-                        "headline": prompt_excerpt(headline),
-                        "excerpts": {key: prompt_excerpt(text) for key, text in excerpts.items()},
-                    },
-                    ensure_ascii=False,
-                )},
+                user_message,
             ],
             "response_format": {"type": "json_schema", "json_schema": {
                 "name": "burmese_news_summary", "strict": True, "schema": schema,
@@ -119,7 +122,7 @@ class GroqProvider:
                             **payload,
                             "messages": [
                                 {"role": "system", "content": GROQ_PROMPT + CORRECTION},
-                                payload["messages"][1],
+                                user_message,
                             ],
                         }
                 elif status not in TRANSIENT_STATUS or attempt:

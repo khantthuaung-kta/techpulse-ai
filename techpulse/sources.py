@@ -153,7 +153,8 @@ def fetch_feed(feed: Feed) -> list[Article]:
         if not title or not entry.get("link") or not valid_url(url) or not date:
             continue
         try:
-            published = datetime(*date[:6], tzinfo=UTC)
+            year, month, day, hour, minute, second = date[:6]
+            published = datetime(year, month, day, hour, minute, second, tzinfo=UTC)
         except ValueError:
             continue
         description = plain_description(entry.get("summary", ""))
@@ -164,7 +165,7 @@ def fetch_feed(feed: Feed) -> list[Article]:
                     if description:
                         break
         articles.append(Article(
-            title, url, feed.name, published, classify(title, feed.category),
+            title, url, feed.name, published, classify(title, feed.category) or feed.category,
             description=description, reliability=feed.reliability,
             japan_context=feed.category == Category.JAPAN,
             official_policy=(
@@ -246,7 +247,7 @@ def fetch_hn_item(item_id: int) -> Article | None:
 
 def collect(feeds: list[Feed | ReleaseSource]) -> tuple[list[Article], bool]:
     """Return articles and whether any source returned usable data."""
-    articles = []
+    articles: list[Article] = []
     usable = False
     with ThreadPoolExecutor(max_workers=12) as pool:
         feed_jobs = [
@@ -256,22 +257,22 @@ def collect(feeds: list[Feed | ReleaseSource]) -> tuple[list[Article], bool]:
         ]
         list_jobs = [(kind, pool.submit(fetch_hn_list, kind)) for kind in ("topstories", "newstories")]
         ids = set()
-        for name, job in list_jobs:
-            result = read_source(name, job.result)
-            if result is not None:
-                ids.update(result)
-                usable |= not result
+        for name, list_job in list_jobs:
+            story_ids = read_source(name, list_job.result)
+            if story_ids is not None:
+                ids.update(story_ids)
+                usable |= not story_ids
         item_jobs = [(item_id, pool.submit(fetch_hn_item, item_id)) for item_id in sorted(ids)]
-        for name, job in feed_jobs:
-            result = read_source(name, job.result)
-            if result is not None:
+        for name, feed_job in feed_jobs:
+            entries = read_source(name, feed_job.result)
+            if entries is not None:
                 usable = True
-                LOG.info("Source %s returned %d dated articles.", name, len(result))
-                articles.extend(result)
+                LOG.info("Source %s returned %d dated articles.", name, len(entries))
+                articles.extend(entries)
         hn_count = 0
-        for item_id, job in item_jobs:
+        for item_id, item_job in item_jobs:
             try:
-                article = job.result()
+                article = item_job.result()
             except (requests.RequestException, ValueError, SourceError) as error:
                 log_source_error(f"Hacker News item {item_id}", error)
                 continue
