@@ -122,6 +122,19 @@ def test_quota_stops_requests_without_retry(article, ai_env, monkeypatch):
     post.assert_called_once()
 
 
+def test_location_rejection_uses_safe_diagnostic(article, ai_env, monkeypatch, caplog):
+    response = Mock(status_code=400)
+    response.json.return_value = {"error": {
+        "message": "User location is not supported for the API use. Internal details: dummy-key",
+    }}
+    post = Mock(return_value=response)
+    monkeypatch.setattr(requests, "post", post)
+    assert configured_summaries([article, replace(article, url="https://example.com/2")]) == {}
+    post.assert_called_once()
+    assert "free-tier API access unavailable from this location" in caplog.text
+    assert "dummy-key" not in caplog.text
+
+
 @pytest.mark.parametrize("response", [Mock(status_code=200, **{"json.return_value": {}}),
                                       gemini_response(finish="MAX_TOKENS"), gemini_response("bad")])
 def test_malformed_or_incomplete_result_falls_back(article, ai_env, monkeypatch, response):

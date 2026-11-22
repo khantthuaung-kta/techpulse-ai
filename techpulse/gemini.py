@@ -68,10 +68,21 @@ class GeminiProvider:
                 status = response.status_code
                 if status == 200:
                     return read_candidate(response)
+                if status == 400 and location_unsupported(response):
+                    raise ProviderUnavailable("Gemini HTTP 400: free-tier API access unavailable from this location")
                 if status not in {500, 502, 503, 504} or attempt:
                     raise ProviderUnavailable(f"Gemini HTTP {status}")
             time.sleep(1)
         raise ProviderUnavailable("Gemini retry limit reached")
+
+
+def location_unsupported(response: requests.Response) -> bool:
+    try:
+        error = response.json()["error"]
+        message = error["message"]
+    except (ValueError, KeyError, TypeError):
+        return False
+    return isinstance(message, str) and "location is not supported" in message.casefold()
 
 
 def read_candidate(response: requests.Response) -> object:
