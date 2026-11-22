@@ -1,5 +1,5 @@
 # HTTP client for news sources and the Telegram Bot API.
-requests>=2.32,<3
+requests>=2.34.2,<3
 # Local Telegram credential loading.
 python-dotenv>=1,<2
 feedparser>=6.0.12,<7
