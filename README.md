@@ -51,4 +51,19 @@ Selection considers the last 24 hours. It ranks by freshness, specific topic mat
 - `techpulse.sources` turns source responses into `Article` records.
 - `techpulse.articles` categorizes and ranks articles. A future summarizer can consume the selected records before rendering.
 - `techpulse.digest` renders the preview and Telegram messages. `techpulse.telegram` handles delivery.
-- A future GitHub Actions workflow can install dependencies on Python 3.12 and invoke `python -m techpulse --send` once a day with both Telegram values supplied through repository secrets. Phase 1 runs on demand.
+
+## GitHub Actions daily delivery
+
+The [daily workflow](.github/workflows/daily-news.yml) runs `python -m src.main --send` on Python 3.12 at 07:00 every day in `Asia/Yangon`. The workflow must be on the repository's default branch for scheduled delivery. GitHub can delay or drop scheduled runs during high load. [GitHub schedule documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+
+1. In the repository, open **Settings → Secrets and variables → Actions → New repository secret**. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` using the same values as your local `.env`. Keep `.env` local and ignored by Git.
+2. Open **Actions → Daily TechPulse AI digest → Run workflow**, select the default branch, and leave **Send a live Telegram digest** unchecked for a preview. Open **Preview the news digest** in the run logs to see the selected articles.
+3. To test delivery, use **Run workflow** again with **Send a live Telegram digest** checked. This sends a real digest to the configured chat. Check the Telegram chat and the **Send the news digest to Telegram** step for confirmation.
+
+If the send step reports missing secrets, confirm both names and values under the repository's **Actions** secrets. For HTTP 401, check that the token belongs to the active bot. For HTTP 400 or 403, verify the chat ID, start the bot in a private chat, or confirm it can post in the target group or channel. If the job fails during collection, read the source warnings in the failed step. If a scheduled run is missing, check that Actions is enabled and the workflow is on the default branch. For timeouts, cancellation, or partial delivery, check the chat before rerunning.
+
+### Duplicate delivery across runners
+
+The workflow's concurrency group prevents overlapping runs. A later manual run or rerun can still deliver the same digest. Until a durable delivery ledger is deployed, check the target chat before repeating a send for the same day.
+
+For durable protection, use a shared store with atomic conditional writes, such as DynamoDB. Key each record by a stable destination identifier and the intended Yangon digest date. Pass the original date through on retries so a late rerun keeps its original key. Before the first Telegram request, atomically create a claim and skip delivery if a claim already exists. Record confirmed message IDs and mark the record sent only after every part succeeds. Retain records for the full period in which reruns are permitted. After a timeout, runner crash, or partial send, keep the claim and reconcile against the chat before clearing it or resuming unsent parts. Telegram delivery and the ledger write can fail independently, so the claim prevents blind retries but cannot guarantee exactly-once delivery.
