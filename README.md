@@ -76,6 +76,23 @@ Expect one serial request per eligible uncached item, with at most 10 first atte
 
 If the preview selects only headline-only items, it can report zero summaries without contacting Gemini. If Gemini reports that free-tier API access is unavailable from the current location, the digest falls back to original headlines. Check [Google's available regions](https://ai.google.dev/gemini-api/docs/available-regions) and keep billing disabled for a $0 budget.
 
+### GroqCloud alternative
+
+For a $0 budget, confirm that your Groq organization is on the **Free** plan before creating a key. The app uses GPT-OSS 20B with structured text output, one request at a time, and stops further attempts for the digest on quota or access errors. The confirmation flag represents the account owner's check of the plan. The app cannot verify the plan from the key. [Groq billing FAQ](https://console.groq.com/docs/billing-faqs) · [Rate limits](https://console.groq.com/docs/rate-limits)
+
+Add the key directly to your ignored `.env` and update the AI settings:
+
+```dotenv
+AI_PROVIDER=groq
+AI_MODEL=openai/gpt-oss-20b
+GROQ_API_KEY=
+GROQ_FREE_TIER_CONFIRMED=true
+```
+
+Run `python -m src.main --dry-run` from the repository root. When an eligible story has publisher text, a successful preview includes a Burmese summary and the original link. Headline-only stories and failed inference use the original headline. Switch back to Gemini by restoring its provider and model settings. The app calls only the selected provider.
+
+For GitHub Actions, set `AI_PROVIDER`, `AI_MODEL`, and `GROQ_FREE_TIER_CONFIRMED` as Actions variables and `GROQ_API_KEY` as an Actions secret. Verify in preview mode before enabling a live Telegram send.
+
 ## GitHub Actions daily delivery
 
 The [daily workflow](.github/workflows/daily-news.yml) runs `python -m src.main --send` on Python 3.12 at 07:00 every day in `Asia/Yangon`. The workflow must be on the repository's default branch for scheduled delivery. GitHub can delay or drop scheduled runs during high load. [GitHub schedule documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)

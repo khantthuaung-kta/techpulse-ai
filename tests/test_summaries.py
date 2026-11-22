@@ -11,7 +11,8 @@ import requests
 from techpulse import __main__ as cli
 from techpulse.articles import Article, Category
 from techpulse.digest import TELEGRAM_LIMIT, render_digest, telegram_length
-from techpulse.gemini import MODEL, GeminiProvider, configured_summaries
+from techpulse.ai_config import configured_summaries
+from techpulse.gemini import MODEL, GeminiProvider
 from techpulse.sources import plain_description
 from techpulse.summaries import SummaryError, summarize_articles, validate_summary
 
@@ -199,3 +200,79 @@ def test_send_includes_burmese_and_original_url(article, ai_env, monkeypatch, tm
 def test_digest_date_uses_yangon():
     at = datetime(2026, 11, 21, 20, tzinfo=UTC)
     assert render_digest([], at)[0].startswith("TechPulse AI · 2026-11-22 Yangon")
+
+
+@pytest.fixture
+def groq_env(ai_env, monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "groq")
+    monkeypatch.setenv("AI_MODEL", "")
+    monkeypatch.setenv("GROQ_API_KEY", "mock-groq-key")
+    monkeypatch.setenv("GROQ_FREE_TIER_CONFIRMED", "true")
+
+
+def groq_response(value=OUTPUT, *, finish="stop"):
+    response = Mock(status_code=200)
+    response.json.return_value = {"choices": [{
+        "finish_reason": finish, "message": {"content": json.dumps(value)},
+    }]}
+    return response
+
+
+def test_groq_dry_run_renders_burmese(article, groq_env, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "collect", lambda feeds: ([article], True))
+    post = Mock(return_value=groq_response())
+    monkeypatch.setattr(requests, "post", post)
+    assert cli.main(["--dry-run"]) == 0
+    output = capsys.readouterr().out
+    assert OUTPUT["summary"] in output and article.url in output
+    post.assert_called_once()
+    assert post.call_args.args == ("https://api.groq.com/openai/v1/chat/completions",)
+    options = post.call_args.kwargs
+    assert options["headers"] == {"Authorization": "Bearer mock-groq-key"}
+    assert options["allow_redirects"] is False and options["timeout"] == (5, 15)
+    assert options["json"]["model"] == "openai/gpt-oss-20b"
+    assert options["json"]["response_format"]["json_schema"]["strict"]
+    assert "tools" not in options["json"]
+
+
+@pytest.mark.parametrize(("name", "value"), [
+    ("GROQ_FREE_TIER_CONFIRMED", "false"),
+    ("GROQ_API_KEY", ""),
+    ("AI_MODEL", MODEL),
+])
+def test_groq_requires_matching_free_config(article, groq_env, monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+    post = Mock()
+    monkeypatch.setattr(requests, "post", post)
+    assert configured_summaries([article]) == {}
+    post.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [401, 403, 429])
+def test_groq_access_errors_stop_without_leaking_details(article, groq_env, monkeypatch, caplog, status):
+    post = Mock(return_value=Mock(status_code=status, text="mock-groq-key"))
+    monkeypatch.setattr(requests, "post", post)
+    assert configured_summaries([article, replace(article, url="https://example.com/2")]) == {}
+    post.assert_called_once()
+    assert f"Groq HTTP {status}" in caplog.text and "mock-groq-key" not in caplog.text
+
+
+def test_groq_timeouts_back_off_and_fall_back(article, groq_env, monkeypatch, caplog):
+    post = Mock(side_effect=requests.Timeout("mock-groq-key"))
+    monkeypatch.setattr(requests, "post", post)
+    sleep = Mock()
+    monkeypatch.setattr("techpulse.groq.time.sleep", sleep)
+    assert configured_summaries([article]) == {}
+    assert post.call_count == 2
+    sleep.assert_called_once_with(1)
+    assert "mock-groq-key" not in caplog.text
+
+
+@pytest.mark.parametrize("response", [
+    groq_response(finish="length"),
+    groq_response("invalid"),
+    groq_response({**OUTPUT, "evidence": "This is not in the source."}),
+])
+def test_groq_malformed_or_unsupported_output_falls_back(article, groq_env, monkeypatch, response):
+    monkeypatch.setattr(requests, "post", Mock(return_value=response))
+    assert configured_summaries([article]) == {}

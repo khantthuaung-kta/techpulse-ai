@@ -7,9 +7,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .ai_config import configured_summaries
 from .articles import select_articles
 from .digest import render_digest
-from .gemini import configured_summaries
 from .sources import collect, load_feeds
 from .telegram import TelegramError, load_credentials, send_connection_test, send_digest
 
