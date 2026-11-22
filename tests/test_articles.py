@@ -1,0 +1,46 @@
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from techpulse.articles import Article, Category, classify, select_articles
+
+NOW = datetime(2026, 11, 22, 10, tzinfo=UTC)
+WINDOW = timedelta(hours=24)
+
+
+@pytest.mark.parametrize(("title", "category"), [
+    ("Local LLM inference", Category.AI),
+    ("New Rust compiler", Category.PROGRAMMING),
+    ("GitHub rolls out a debugger", Category.TOOLS),
+    ("Semiconductor investment in Japan", Category.JAPAN),
+    ("Open-source media player", Category.OPEN_SOURCE),
+    ("A new NVIDIA chip", Category.TRENDING),
+    ("A recipe for carrot soup", None),
+])
+def test_classify(title, category):
+    assert classify(title) == category
+
+
+def test_selection_ranks_and_deduplicates_within_window():
+    best = Article("Python 3.12!", "https://example.org/post", "Publisher", NOW, Category.PROGRAMMING)
+    candidates = [
+        replace(best, title="Same URL", url="http://www.example.org/post/?utm_source=test#intro",
+                published_at=NOW - timedelta(hours=2)),
+        replace(best, title="Ｐｙｔｈｏｎ 3.12", url="https://example.com/different",
+                published_at=NOW - timedelta(hours=1)),
+        replace(best, title="Older", url="https://example.org/old", published_at=NOW-WINDOW-timedelta(seconds=1)),
+        replace(best, title="Future", url="https://example.org/future", published_at=NOW+timedelta(seconds=1)),
+        replace(best, title="New browser", url="https://example.org/browser", category=Category.TRENDING),
+        best,
+    ]
+    assert select_articles(candidates, NOW, WINDOW) == [best, candidates[4]]
+
+
+def test_selection_limit_and_popularity():
+    articles = [
+        Article(f"Rust project {i}", f"https://example.org/{i}", "Hacker News",
+                NOW, Category.PROGRAMMING, i)
+        for i in range(15)
+    ]
+    assert select_articles(articles, NOW, WINDOW) == articles[:4:-1]

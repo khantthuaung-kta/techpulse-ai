@@ -1,0 +1,14 @@
+[[feeds]]
+name = "The GitHub Blog"
+url = "https://github.blog/feed/"
+category = "Developer Tools"
+
+[[feeds]]
+name = "Hugging Face Blog"
+url = "https://huggingface.co/blog/feed.xml"
+category = "AI & LLM"
+
+[[feeds]]
+name = "ITmedia NEWS"
+url = "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml"
+category = "Japan IT"
