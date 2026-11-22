@@ -208,6 +208,7 @@ def groq_env(ai_env, monkeypatch):
     monkeypatch.setenv("AI_MODEL", "")
     monkeypatch.setenv("GROQ_API_KEY", "mock-groq-key")
     monkeypatch.setenv("GROQ_FREE_TIER_CONFIRMED", "true")
+    monkeypatch.setattr("techpulse.groq.time.sleep", Mock())
 
 
 def groq_response(value=None, *, finish="stop"):
@@ -314,5 +315,60 @@ def test_groq_generated_json_rejection_only_skips_one_item(article, groq_env, mo
     invalid = Mock(status_code=400)
     invalid.json.return_value = {"error": {"code": "json_validate_failed"}}
     other = replace(article, url="https://example.org/another")
-    monkeypatch.setattr(requests, "post", Mock(side_effect=[invalid, groq_response()]))
+    post = Mock(side_effect=[invalid, invalid, groq_response()])
+    monkeypatch.setattr(requests, "post", post)
     assert set(configured_summaries([article, other])) == {other.url}
+    assert post.call_count == 3
+
+
+def test_groq_repairs_schema_rejection_without_echoing_failed_output(article, groq_env, monkeypatch):
+    invalid = Mock(status_code=400)
+    invalid.json.return_value = {"error": {
+        "code": "json_validate_failed",
+        "failed_generation": "untrusted failed generation",
+    }}
+    post = Mock(side_effect=[invalid, groq_response()])
+    monkeypatch.setattr(requests, "post", post)
+    assert configured_summaries([article])[article.url].evidence == DESCRIPTION
+    first, second = (call.kwargs["json"] for call in post.call_args_list)
+    assert first["response_format"] == second["response_format"]
+    assert first["messages"][1] == second["messages"][1]
+    assert "previous response was rejected" in second["messages"][0]["content"]
+    assert "untrusted failed generation" not in str(second)
+
+
+def test_groq_repairs_unsupported_number_without_weakening_validation(article, groq_env, monkeypatch):
+    bad = {**OUTPUT, "evidence": "0", "summary": "Python 9.99 အသစ် ထွက်လာသည်။"}
+    post = Mock(side_effect=[groq_response(bad), groq_response()])
+    monkeypatch.setattr(requests, "post", post)
+    assert configured_summaries([article])[article.url].summary == OUTPUT["summary"]
+    assert post.call_count == 2
+
+
+def test_groq_rejects_reused_quantity_with_changed_unit(article, groq_env, monkeypatch):
+    original = "Python 3.12 improves debugging. The project added 1700 tests."
+    article = replace(article, description=original)
+    bad = {**OUTPUT, "evidence": "0", "summary": "Python 3.12 တွင် 1700 မီလီယံ အချက်အလက် ပိုလာသည်။"}
+    post = Mock(side_effect=[groq_response(bad), groq_response()])
+    monkeypatch.setattr(requests, "post", post)
+    summary = configured_summaries([article])[article.url]
+    assert summary.evidence == original
+    assert "3.12" in summary.summary and "1700" not in summary.summary
+    prompt_data = json.loads(post.call_args_list[0].kwargs["json"]["messages"][1]["content"])
+    assert "1700" not in prompt_data["excerpts"]["0"]
+    assert "3.12" in prompt_data["excerpts"]["0"]
+
+
+def test_groq_masks_katakana_person_name_and_quantity_but_keeps_publisher_evidence(
+    article, groq_env, monkeypatch
+):
+    description = "レベント・アルポーゲ氏は1700万行の証明を公開した。Python v3.12 と GPT-4 に言及した。"
+    article = replace(article, description=description)
+    output = {**OUTPUT, "headline": "Python v3.12 ကို ရည်ညွှန်းသည်။",
+              "summary": "Python v3.12 နှင့် GPT-4 ကို ရည်ညွှန်းထားသည်။", "evidence": "0"}
+    post = Mock(return_value=groq_response(output))
+    monkeypatch.setattr(requests, "post", post)
+    assert configured_summaries([article])[article.url].evidence == description
+    data = json.loads(post.call_args.kwargs["json"]["messages"][1]["content"])
+    assert "1700万行" not in data["excerpts"]["0"] and "アルポーゲ" not in data["excerpts"]["0"]
+    assert "v3.12" in data["excerpts"]["0"] and "GPT-4" in data["excerpts"]["0"]

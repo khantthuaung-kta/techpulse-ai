@@ -95,7 +95,7 @@ Run `python -m src.main --dry-run` from the repository root. When an eligible st
 
 For GitHub Actions, set `AI_PROVIDER`, `AI_MODEL`, and `GROQ_FREE_TIER_CONFIRMED` as Actions variables and `GROQ_API_KEY` as an Actions secret. Verify in preview mode before enabling a live Telegram send.
 
-Groq selects a publisher excerpt by ID. The app resolves that ID to the original text and still rejects summaries with unsupported numbers or invalid Burmese fields.
+Groq selects a publisher excerpt by ID. The app resolves that ID to the original text and rejects invalid Burmese fields and missing attribution for explicitly claimed results. The prompt masks standalone quantities and Katakana personal names marked with a Japanese honorific to reduce unit and name mistranslations. The validator still checks the original excerpt and rejects generated quantities. Dotted versions and numbered product identifiers can pass when copied from the source. If Groq rejects its generated JSON or the output fails validation, the app can use one corrective attempt with the same excerpts and schema. The two-request limit per item still applies. If the retry fails, the original headline and link remain in the digest.
 
 ## GitHub Actions daily delivery
 
