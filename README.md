@@ -40,13 +40,27 @@ Use the numeric chat ID for a private chat or group, or `@channelusername` for a
 
 ## Configure feeds and selection
 
-Edit `feeds.toml` or pass `--feeds path/to/feeds.toml`. Every `[[feeds]]` entry has a display `name`, an HTTP(S) `url`, and a default `category`. Supported categories are AI & LLM, Programming, Developer Tools, Japan IT, Open Source, and Trending Tech. Title keywords can override a feed's default category. To run with Hacker News alone, use a config containing `feeds = []`.
+Edit `feeds.toml` or pass `--feeds path/to/feeds.toml`. Every `[[feeds]]` entry has a display `name`, an HTTP(S) `url`, and a default `category`. A `[[github_releases]]` entry uses an `owner/repo` value in `repository` in place of a URL. Set `reliability` between 0 and 1 to express a source preference. These are editorial weights. Supported categories are AI & LLM, Programming, Developer Tools, Japan IT, Open Source, and Trending Tech. Title keywords can override a feed's default category. To run with Hacker News alone, use a config containing `feeds = []`.
 
-The collector reads up to 40 IDs each from Hacker News top and new stories. Hacker News entries need an external story link and a technology-related title. Their displayed time is the Hacker News submission time. Feeds use the publisher's publication timestamp or the Atom update timestamp if publication time is absent. Times are displayed in UTC.
+The collector reads up to 40 IDs each from Hacker News top and new stories. Hacker News entries need an external story link and a technology-related title. Their displayed time is the Hacker News submission time. Feeds use the publisher's publication timestamp or the Atom update timestamp if publication time is absent. GitHub uses the release's publication time and original release URL, reads up to five releases per configured repository with one unauthenticated request, and skips drafts and prereleases. Times are displayed in UTC. Logs report the collector's result count per source and warn when a source fails.
 
-Selection considers the last 24 hours. It ranks by freshness, specific topic matches, and capped Hacker News popularity, then deduplicates normalized links and titles and keeps up to 10 articles. A failed source is logged and the remaining sources can supply the digest. If every source fails, the CLI exits with status 1. A successful collection with zero matches produces an empty-digest notice. Telegram messages split between articles when needed.
+The default registry includes Python Insider, the engineering blogs from LY Corporation and Visual Studio Code, ITmedia, and releases from FastAPI, React, and Odoo Owl. Other sources include Hacker News, GitHub Blog, Hugging Face, Ars Technica IT, and TechCrunch. [Python Insider feed announcement](https://blog.python.org/2026/03/the-python-insider-blog-has-moved/) · [LY Corporation feed announcement](https://engineering.linecorp.com/en/blog/LY-Corporation-Tech-Blog) · [GitHub Releases API](https://docs.github.com/en/rest/releases/releases#list-releases)
 
-When a free-tier AI provider is configured, the three highest-ranked distinct stories keep their positions. For the remaining spots, usable publisher text from a configured feed adds one ranking point, equivalent to 12 hours of freshness within the 24-hour window. Headline repeats, bare links, and short boilerplate earn no bonus and are skipped by the summarizer. Stories without publisher text can still rank on freshness, topic and popularity. With AI off or incomplete configuration, the original ranking applies.
+A failed source is logged and the remaining sources can supply the digest. If every source fails, the CLI exits with status 1. A successful collection with zero matches produces an empty-digest notice. Telegram messages split between articles when needed.
+
+### Personalized ranking
+
+Edit `preferences.toml` or pass `--preferences path/to/preferences.toml`. Interests cover AI, Python, FastAPI, React/TypeScript, Odoo, developer tools, open source, and Japan IT. Weights range from 0 to 2, and 0 disables an interest. Ranking combines freshness, category, matched career interests, source reliability, capped Hacker News engagement, and title novelty within the current digest. When free-tier AI is ready, usable publisher text adds one point after the first three picks. Headline repeats, bare links, and short boilerplate earn no bonus.
+
+Cross-source deduplication uses normalized URLs and titles, with a conservative title-overlap check that keeps differently numbered releases distinct. The checked-in preferences cap the digest at three stories per source and four per category. It can be shorter when coverage is sparse. It fills from the last 24 hours first and extends the lookback to 36 hours only if fewer than six recent stories qualify. Set `fallback_hours` to 24 to disable the extension, or choose a value up to 72 and adjust `min_recent`.
+
+Japan IT entries distinguish engineering coverage, jobs, and visa or regulatory updates. A policy headline qualifies only from an explicitly configured Japanese government feed with an HTTPS `.go.jp` feed and article link. For such a feed set `category = "Japan IT"` and `official_policy = true`. Job and policy entries show the original headline, publisher, and timestamp with their link.
+
+```sh
+AI_PROVIDER=off python -m src.main --dry-run --explain --learn-tip
+```
+
+The preview lists each selected story and its scoring factors. `--learn-tip` adds one reading exercise beside a selected publisher link when suitable source text exists. It also works with `--send`. The exercise uses no AI requests.
 
 ## Extension points
 

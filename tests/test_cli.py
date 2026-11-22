@@ -44,6 +44,13 @@ def test_dry_run(configured, capsys, monkeypatch, article):
     assert "Programming · News & Views" in text
 
 
+def test_dry_run_explain_shows_selected_score(configured, capsys, monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "off")
+    assert cli.main(["--dry-run", "--explain"]) == 0
+    text = capsys.readouterr().out
+    assert "Ranking factors" in text and "interests 1.00 (python)" in text
+
+
 def test_send_reads_dotenv_and_posts_escaped_html(configured, monkeypatch):
     def post(url, *, json, timeout, allow_redirects):
         assert url == "https://api.telegram.org/bot123:test-token/sendMessage"

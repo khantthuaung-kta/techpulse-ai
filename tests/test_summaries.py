@@ -240,23 +240,27 @@ def test_groq_dry_run_renders_burmese(article, groq_env, monkeypatch, capsys):
     assert "tools" not in options["json"]
 
 
-def test_cli_promotes_publisher_text_only_with_ready_ai(article, groq_env, monkeypatch, capsys):
+def test_cli_promotes_publisher_text_only_with_ready_ai(article, groq_env, monkeypatch, capsys, tmp_path):
     headlines = [
         replace(article, title=f"Python update {i}", url=f"https://example.org/{i}",
                 source="Hacker News", popularity=80, description="")
         for i in range(10)
     ]
-    publisher = replace(article, published_at=article.published_at - timedelta(hours=2))
+    publisher = replace(article, published_at=article.published_at - timedelta(hours=2),
+                        description="Python 3.12 improves error messages for developers.")
     monkeypatch.setattr(cli, "collect", lambda feeds: ([*headlines, publisher], True))
     post = Mock(return_value=groq_response())
     monkeypatch.setattr(requests, "post", post)
 
-    assert cli.main(["--dry-run"]) == 0
+    preferences = tmp_path / "preferences.toml"
+    preferences.write_text("[selection]\nmax_per_source = 10\nmax_per_category = 10\n")
+    args = ["--dry-run", "--preferences", str(preferences)]
+    assert cli.main(args) == 0
     assert OUTPUT["summary"] in capsys.readouterr().out
     post.assert_called_once()
 
     monkeypatch.setenv("GROQ_FREE_TIER_CONFIRMED", "false")
-    assert cli.main(["--dry-run"]) == 0
+    assert cli.main(args) == 0
     assert article.url not in capsys.readouterr().out
     post.assert_called_once()
 

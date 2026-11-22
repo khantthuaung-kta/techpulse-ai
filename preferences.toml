@@ -1,0 +1,15 @@
+[interests]
+ai = 0.8
+python = 1.0
+fastapi = 1.2
+react_typescript = 1.0
+odoo = 1.2
+developer_tools = 0.7
+open_source = 0.65
+japan_it = 1.0
+
+[selection]
+max_per_category = 4
+max_per_source = 3
+fallback_hours = 36
+min_recent = 6

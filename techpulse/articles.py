@@ -23,6 +23,12 @@ class Category(StrEnum):
     TRENDING = "Trending Tech"
 
 
+class JapanTopic(StrEnum):
+    ENGINEERING = "Industry / engineering"
+    JOBS = "Jobs / hiring"
+    POLICY = "Visa / regulation"
+
+
 @dataclass(frozen=True, slots=True)
 class Article:
     title: str
@@ -32,6 +38,22 @@ class Article:
     category: Category
     popularity: int = 0
     description: str = ""
+    reliability: float = 0.55
+    japan_context: bool = False
+    official_policy: bool = False
+
+
+def japan_topic(article: Article) -> JapanTopic | None:
+    if article.category != Category.JAPAN and not article.japan_context:
+        return None
+    if re.search(
+        r"\b(?:visas?|immigration|regulations?|regulatory|legislation|work permits?)\b|在留資格|ビザ|入管|法改正|規制",
+        article.title, re.I,
+    ):
+        return JapanTopic.POLICY
+    if re.search(r"\b(?:jobs?|hiring|recruitment|vacanc\w+)\b|求人|採用|募集|転職", article.title, re.I):
+        return JapanTopic.JOBS
+    return JapanTopic.ENGINEERING
 
 
 TOPICS = {
@@ -90,6 +112,8 @@ def title_key(text: str) -> str:
 
 def publisher_text(article: Article) -> str:
     """Return usable feed evidence, excluding headline repeats and link-only text."""
+    if japan_topic(article) in {JapanTopic.POLICY, JapanTopic.JOBS}:
+        return ""
     description = article.description[:DESCRIPTION_LIMIT].strip()
     without_links = re.sub(r"https?://\S+", "", description, flags=re.IGNORECASE)
     normalized = title_key(without_links)

@@ -2,13 +2,64 @@
 name = "The GitHub Blog"
 url = "https://github.blog/feed/"
 category = "Developer Tools"
+reliability = 0.95
 
 [[feeds]]
 name = "Hugging Face Blog"
 url = "https://huggingface.co/blog/feed.xml"
 category = "AI & LLM"
+reliability = 0.9
 
 [[feeds]]
 name = "ITmedia NEWS"
 url = "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml"
 category = "Japan IT"
+reliability = 0.8
+
+[[feeds]]
+name = "Python Insider"
+url = "https://blog.python.org/rss.xml"
+category = "Programming"
+reliability = 0.95
+
+[[feeds]]
+name = "LY Corporation Tech Blog"
+url = "https://techblog.lycorp.co.jp/en/feed/index.xml"
+category = "Japan IT"
+reliability = 0.95
+
+[[feeds]]
+name = "Visual Studio Code Blog"
+url = "https://code.visualstudio.com/feed.xml"
+category = "Developer Tools"
+reliability = 0.95
+
+[[feeds]]
+name = "Ars Technica IT"
+url = "https://arstechnica.com/information-technology/feed/"
+category = "Trending Tech"
+reliability = 0.8
+
+[[feeds]]
+name = "TechCrunch AI"
+url = "https://techcrunch.com/category/artificial-intelligence/feed/"
+category = "AI & LLM"
+reliability = 0.75
+
+[[github_releases]]
+name = "FastAPI"
+repository = "fastapi/fastapi"
+category = "Programming"
+reliability = 0.95
+
+[[github_releases]]
+name = "React"
+repository = "react/react"
+category = "Programming"
+reliability = 0.95
+
+[[github_releases]]
+name = "Odoo Owl"
+repository = "odoo/owl"
+category = "Programming"
+reliability = 0.95

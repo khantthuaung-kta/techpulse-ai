@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import feedparser
 import requests
@@ -21,6 +21,7 @@ LOG = logging.getLogger(__name__)
 HN = "https://hacker-news.firebaseio.com/v0"
 TIMEOUT = (5, 10)
 USER_AGENT = "TechPulseAI/0.1 (technology digest reader)"
+REPOSITORY = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_][A-Za-z0-9_.-]*")
 
 
 class SourceError(Exception):
@@ -65,24 +66,53 @@ class Feed:
     name: str
     url: str
     category: Category
+    reliability: float = 0.75
+    official_policy: bool = False
 
 
-def load_feeds(path: Path) -> list[Feed]:
+@dataclass(frozen=True, slots=True)
+class ReleaseSource:
+    name: str
+    repository: str
+    category: Category
+    reliability: float = 0.95
+
+
+def load_feeds(path: Path) -> list[Feed | ReleaseSource]:
     with path.open("rb") as file:
-        entries = tomllib.load(file).get("feeds")
-    if not isinstance(entries, list):
-        raise ValueError("Expected a feeds array in the TOML configuration.")
-    feeds = []
-    for index, entry in enumerate(entries, start=1):
-        try:
-            name, url = entry["name"].strip(), entry["url"]
-            category = Category(entry["category"])
-            if not name or not valid_url(url):
-                raise ValueError
-        except (KeyError, TypeError, ValueError, AttributeError):
-            raise ValueError(f"Feed {index} requires a name, HTTP(S) URL and valid category.") from None
-        feeds.append(Feed(name, url, category))
-    return feeds
+        config = tomllib.load(file)
+    if not config.keys() & {"feeds", "github_releases"}:
+        raise ValueError("Expected feeds or github_releases in the source registry.")
+    sources: list[Feed | ReleaseSource] = []
+    for section, label in (("feeds", "Feed"), ("github_releases", "Release source")):
+        entries = config.get(section, [])
+        if not isinstance(entries, list):
+            raise ValueError(f"Expected {section} to be an array.")
+        for index, entry in enumerate(entries, start=1):
+            try:
+                name = entry["name"].strip()
+                category = Category(entry["category"])
+                reliability = entry.get("reliability", 0.75 if section == "feeds" else 0.95)
+                if not name or type(reliability) not in {int, float} or not 0 <= reliability <= 1:
+                    raise ValueError
+                if section == "feeds":
+                    url = entry["url"]
+                    official = entry.get("official_policy", False)
+                    if not valid_url(url) or type(official) is not bool:
+                        raise ValueError
+                    if official and (
+                        category != Category.JAPAN or not is_japan_government_url(url)
+                    ):
+                        raise ValueError
+                    sources.append(Feed(name, url, category, reliability, official))
+                else:
+                    repository = entry["repository"]
+                    if not REPOSITORY.fullmatch(repository):
+                        raise ValueError
+                    sources.append(ReleaseSource(name, repository, category, reliability))
+            except (KeyError, TypeError, ValueError, AttributeError):
+                raise ValueError(f"{label} {index} has an invalid name, location, category or reliability.") from None
+    return sources
 
 
 def get(url: str) -> requests.Response:
@@ -125,7 +155,48 @@ def fetch_feed(feed: Feed) -> list[Article]:
                         break
         articles.append(Article(
             title, url, feed.name, published, classify(title, feed.category),
-            description=description,
+            description=description, reliability=feed.reliability,
+            japan_context=feed.category == Category.JAPAN,
+            official_policy=(
+                feed.official_policy and is_japan_government_url(response.url) and is_japan_government_url(url)
+            ),
+        ))
+    return articles
+
+
+def is_japan_government_url(url: str) -> bool:
+    return urlsplit(url).scheme == "https" and (urlsplit(url).hostname or "").endswith(".go.jp")
+
+
+def fetch_releases(source: ReleaseSource) -> list[Article]:
+    payload = get(f"https://api.github.com/repos/{source.repository}/releases?per_page=5").json()
+    if not isinstance(payload, list):
+        raise SourceError("invalid GitHub release list")
+    articles = []
+    expected_path = f"/{source.repository}/releases/tag/".casefold()
+    for release in payload[:5]:
+        if not isinstance(release, dict) or release.get("draft") is not False or release.get("prerelease") is not False:
+            continue
+        url, tag = release.get("html_url"), release.get("tag_name")
+        if not valid_url(url) or not isinstance(tag, str) or not tag.strip():
+            continue
+        parts = urlsplit(url)
+        if parts.scheme != "https" or parts.netloc != "github.com" or not parts.path.casefold().startswith(expected_path):
+            continue
+        try:
+            published = datetime.fromisoformat(release["published_at"])
+            if published.tzinfo is None:
+                continue
+        except (KeyError, ValueError, TypeError):
+            continue
+        name, body = release.get("name"), release.get("body")
+        release_name = " ".join(unescape(name if isinstance(name, str) and name.strip() else tag).split())
+        if tag not in release_name:
+            release_name = f"{release_name} ({tag})"
+        articles.append(Article(
+            f"{source.name} {release_name}", url, source.name, published.astimezone(UTC), source.category,
+            description=plain_description(body) if isinstance(body, str) else "",
+            reliability=source.reliability,
         ))
     return articles
 
@@ -163,12 +234,16 @@ def fetch_hn_item(item_id: int) -> Article | None:
                    max(score, 0) if type(score) is int else 0)
 
 
-def collect(feeds: list[Feed]) -> tuple[list[Article], bool]:
+def collect(feeds: list[Feed | ReleaseSource]) -> tuple[list[Article], bool]:
     """Return articles and whether any source returned usable data."""
     articles = []
     usable = False
     with ThreadPoolExecutor(max_workers=12) as pool:
-        feed_jobs = [(feed.name, pool.submit(fetch_feed, feed)) for feed in feeds]
+        feed_jobs = [
+            (feed.name, pool.submit(fetch_feed, feed) if isinstance(feed, Feed)
+             else pool.submit(fetch_releases, feed))
+            for feed in feeds
+        ]
         list_jobs = [(kind, pool.submit(fetch_hn_list, kind)) for kind in ("topstories", "newstories")]
         ids = set()
         for name, job in list_jobs:
@@ -181,7 +256,9 @@ def collect(feeds: list[Feed]) -> tuple[list[Article], bool]:
             result = read_source(name, job.result)
             if result is not None:
                 usable = True
+                LOG.info("Source %s returned %d dated articles.", name, len(result))
                 articles.extend(result)
+        hn_count = 0
         for item_id, job in item_jobs:
             try:
                 article = job.result()
@@ -191,6 +268,8 @@ def collect(feeds: list[Feed]) -> tuple[list[Article], bool]:
             usable = True
             if article:
                 articles.append(article)
+                hn_count += 1
+        LOG.info("Hacker News returned %d dated technology stories from %d candidate IDs.", hn_count, len(ids))
     return articles, usable
 
 

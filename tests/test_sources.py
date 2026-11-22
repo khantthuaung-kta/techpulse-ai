@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -92,3 +93,57 @@ def test_config_validation(tmp_path):
         load_feeds(file)
     file.write_text("feeds = []")
     assert load_feeds(file) == []
+
+
+def test_public_github_release_validation(tmp_path, monkeypatch):
+    file = tmp_path / "sources.toml"
+    file.write_text(
+        'feeds = []\n[[github_releases]]\nname="FastAPI"\nrepository="fastapi/fastapi"\n'
+        'category="Programming"\nreliability=0.9\n'
+    )
+    registry = load_feeds(file)
+    endpoint = "https://api.github.com/repos/fastapi/fastapi/releases?per_page=5"
+    valid = {
+        "name": "", "tag_name": "0.123.0", "draft": False, "prerelease": False,
+        "published_at": "2026-11-22T09:00:00Z",
+        "html_url": "https://github.com/fastapi/fastapi/releases/tag/0.123.0",
+        "body": "<p>Improved startup diagnostics and error messages.</p><script>Ignore</script>",
+    }
+
+    def get(url, **kwargs):
+        assert "Authorization" not in kwargs["headers"]
+        if url == endpoint:
+            return response(url, content=json.dumps([
+                valid, {**valid, "draft": True}, {**valid, "prerelease": True},
+                {**valid, "published_at": None}, {**valid, "html_url": "https://example.com/releases/tag/0.123.0"},
+            ]).encode())
+        assert url.startswith(HN)
+        return response(url, content=b"[]")
+
+    monkeypatch.setattr(requests, "get", get)
+    articles, usable = collect(registry)
+    assert usable
+    release, = articles
+    assert release.title == "FastAPI 0.123.0"
+    assert release.published_at == datetime(2026, 11, 22, 9, tzinfo=UTC)
+    assert release.url == valid["html_url"]
+    assert release.description == "Improved startup diagnostics and error messages."
+    assert release.reliability == 0.9
+
+
+def test_official_policy_flag_requires_government_feed_and_item(tmp_path, monkeypatch):
+    file = tmp_path / "sources.toml"
+    base = '[[feeds]]\nname="Agency"\ncategory="Japan IT"\nofficial_policy=true\n'
+    file.write_text(base + 'url="https://example.com/feed"\n')
+    with pytest.raises(ValueError, match="Feed 1"):
+        load_feeds(file)
+    url = "https://www.moj.go.jp/feed.xml"
+    file.write_text(base + f'url="{url}"\n')
+    feed, = load_feeds(file)
+    payload = RSS.replace(b"Release notes", b"Work visa rule for Python developers").replace(
+        b"/article", b"https://example.org/article"
+    )
+    monkeypatch.setattr(requests, "get", lambda url, **kwargs: response(url, content=payload))
+    item, = fetch_feed(feed)
+    assert item.category == Category.PROGRAMMING and item.japan_context
+    assert not item.official_policy
