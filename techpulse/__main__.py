@@ -7,7 +7,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .ai_config import configured_summaries
+from .ai_config import configured_summaries, load_summary_settings
 from .articles import select_articles
 from .digest import render_digest
 from .sources import collect, load_feeds
@@ -54,11 +54,14 @@ def main(argv: list[str] | None = None) -> int:
         LOG.error("All news sources failed.")
         return 1
 
-    now = datetime.now(UTC)
-    selected = select_articles(articles, now, timedelta(hours=24))
     if args.dry_run:
         load_dotenv(Path(".env"))
-    summaries = configured_summaries(selected)
+    settings = load_summary_settings()
+    now = datetime.now(UTC)
+    selected = select_articles(
+        articles, now, timedelta(hours=24), prefer_publisher_text=settings.provider is not None
+    )
+    summaries = configured_summaries(selected, settings)
     if args.dry_run:
         print(render_digest(selected, now, summaries=summaries)[0])
         return 0

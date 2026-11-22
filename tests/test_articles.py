@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from techpulse.articles import Article, Category, classify, select_articles
+from techpulse.articles import Article, Category, classify, publisher_text, select_articles
 
 NOW = datetime(2026, 11, 22, 10, tzinfo=UTC)
 WINDOW = timedelta(hours=24)
@@ -44,3 +44,38 @@ def test_selection_limit_and_popularity():
         for i in range(15)
     ]
     assert select_articles(articles, NOW, WINDOW) == articles[:4:-1]
+
+
+def test_publisher_text_preference_preserves_leads_and_promotes_recent_evidence():
+    headlines = [
+        Article(f"Browser update {i}", f"https://example.org/{i}", "Hacker News",
+                NOW - timedelta(minutes=i), Category.TRENDING, 80 - i)
+        for i in range(10)
+    ]
+    publisher = replace(
+        headlines[-1], source="Publisher", url="https://www.example.org/9?utm_source=rss",
+        published_at=NOW - timedelta(hours=2), popularity=0,
+        description="The browser update fixes issues with restoring tabs.",
+    )
+    expired = replace(publisher, url="https://example.org/expired", title="Browser news yesterday",
+                      published_at=NOW - WINDOW - timedelta(seconds=1))
+    candidates = [*headlines, publisher, expired]
+    assert select_articles(candidates, NOW, WINDOW) == headlines
+
+    selected = select_articles(candidates, NOW, WINDOW, prefer_publisher_text=True)
+    assert selected[:3] == headlines[:3]
+    assert selected[3] == publisher
+    assert headlines[-1] not in selected and expired not in selected
+    assert len(selected) == 10
+
+
+@pytest.mark.parametrize("description", [
+    "A Python release!",
+    "A Python release. Read the full article",
+    "https://example.org/an/article/about/python",
+    "Read more",
+])
+def test_publisher_text_ignores_inadequate_evidence(description):
+    article = Article("A Python release", "https://example.org/python", "Publisher", NOW,
+                      Category.PROGRAMMING, description=description)
+    assert publisher_text(article) == ""

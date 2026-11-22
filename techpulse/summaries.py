@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol
 
-from .articles import DESCRIPTION_LIMIT, Article, url_key
+from .articles import Article, publisher_text, url_key
 
 LOG = logging.getLogger(__name__)
 PROMPT_VERSION = "burmese-v1"
@@ -115,8 +115,8 @@ def summarize_articles(
     try:
         for article in articles[:10]:
             headline = article.title[:300]
-            description = article.description[:DESCRIPTION_LIMIT]
-            if len(description) < 12 or description.casefold() in article.title.casefold():
+            description = publisher_text(article)
+            if not description:
                 continue
             key = cache_key(article, headline, description, provider)
             if cache is not None:

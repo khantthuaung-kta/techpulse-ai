@@ -46,6 +46,8 @@ The collector reads up to 40 IDs each from Hacker News top and new stories. Hack
 
 Selection considers the last 24 hours. It ranks by freshness, specific topic matches, and capped Hacker News popularity, then deduplicates normalized links and titles and keeps up to 10 articles. A failed source is logged and the remaining sources can supply the digest. If every source fails, the CLI exits with status 1. A successful collection with zero matches produces an empty-digest notice. Telegram messages split between articles when needed.
 
+When a free-tier AI provider is configured, the three highest-ranked distinct stories keep their positions. For the remaining spots, usable publisher text from a configured feed adds one ranking point, equivalent to 12 hours of freshness within the 24-hour window. Headline repeats, bare links, and short boilerplate earn no bonus and are skipped by the summarizer. Stories without publisher text can still rank on freshness, topic and popularity. With AI off or incomplete configuration, the original ranking applies.
+
 ## Extension points
 
 - `techpulse.sources` turns source responses into `Article` records.
