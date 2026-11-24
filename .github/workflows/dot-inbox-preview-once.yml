@@ -1,0 +1,32 @@
+name: One-time private inbox preview
+
+on:
+  pull_request:
+    types: [synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-inbox:
+    if: >-
+      github.repository == 'khantthuaung-kta/techpulse-ai' &&
+      github.event.pull_request.number == 8 &&
+      github.event.pull_request.draft == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'dot/telegram-digest-bridge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Validate the private preview without sending
+        env:
+          TECHPULSE_DIGEST_READ_TOKEN: ${{ secrets.TECHPULSE_DIGEST_READ_TOKEN }}
+        run: python -m src.main --check-dot-preview=2026-11-24
