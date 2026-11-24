@@ -171,11 +171,17 @@ secrets, set `TECHPULSE_DIGEST_READ_TOKEN` to a fine-grained GitHub token with
 read-only Contents access scoped to `khantthuaung-kta/techpulse-digest-inbox`.
 Use the repository secret UI; do not put the token in code or logs.
 
-The writer saves UTF-8 plain text (at most 3,500 UTF-16 units) under
-`digests/YYYY-MM-DD.md` on the inbox's `main` branch. The date is the original
-GitHub run date in Asia/Yangon. A missing, unreadable, oversized or malformed file
-falls back to the ordinary digest. The bot preserves the text literally and
-uses the same configured Telegram destination and duplicate guard.
+The writer saves UTF-8 plain text (at most 60 KiB and 25,000 UTF-16 units)
+under `digests/YYYY-MM-DD.md` on the inbox's `main` branch. The date is the
+original GitHub run date in Asia/Yangon. Put each story in its own block and
+separate stories with blank lines. A missing, unreadable, oversized or
+malformed file falls back to the ordinary digest.
+
+The bot shows the text literally and splits long editions into numbered
+Telegram messages, preferring story breaks. It keeps the same destination
+and claims the entire edition once. If delivery stops partway through, the
+confirmed parts remain in the ledger; the bot does not automatically send
+the edition again.
 
 For a no-send access check, manually run **Daily TechPulse AI digest** with
 **Send a live Telegram digest** unchecked and enter the date of a file under

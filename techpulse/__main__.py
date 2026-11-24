@@ -3,7 +3,6 @@
 import argparse
 import logging
 from datetime import UTC, date, datetime
-from html import escape
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,7 +10,7 @@ from dotenv import load_dotenv
 from .ai_config import configured_summaries, load_summary_settings
 from .delivery import YANGON, already_claimed, deliver, delivery_date, open_ledger
 from .digest import render_digest
-from .dot_inbox import read_dot_digest
+from .dot_inbox import read_dot_digest, split_dot_digest
 from .interactive import run_poller
 from .ledger import LedgerError, article_fingerprints, destination_key, sent_history
 from .personalization import explain_ranking, load_preferences, rank_digest
@@ -93,7 +92,8 @@ def main(argv: list[str] | None = None) -> int:
                 if datetime.now(UTC).astimezone(YANGON).date() != day:
                     LOG.info("Dot read crossed the Yangon date boundary. Skipping stale delivery.")
                     return 0
-                if deliver(ledger, day, destination, [], [escape(dot_digest)], token, chat_id):
+                messages = split_dot_digest(dot_digest)
+                if deliver(ledger, day, destination, [], messages, token, chat_id):
                     LOG.info("Delivered the Dot-authored digest for %s.", day)
                 return 0
             except (LedgerError, TelegramError) as error:
