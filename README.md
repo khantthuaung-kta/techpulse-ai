@@ -162,3 +162,22 @@ Interactive news uses publisher headlines and original links. It does not call G
 The ignored `.techpulse-interactive.sqlite3` file stores polling offsets and preferences or bookmarks that you explicitly save. It does not hold Telegram credentials or command history. Use `TECHPULSE_INTERACTIVE_DB` for a different local path and keep it outside version control. Preferences and bookmarks are scoped to your chat and user. Rotating the bot token changes that scope. Numbered news results are kept in memory and reset when the process stops.
 
 For a local smoke test, start the poller and send `/help`, wait three seconds, then send `/latest`. Expect a command list followed by numbered source links or a clear no-stories message. Run only one poller per bot. If Telegram reports a conflict, check for another polling process or an existing webhook. TechPulse AI leaves webhook configuration unchanged. Updates older than ten minutes are ignored. The poller saves the update offset before replying, so a failed or ambiguous reply is not replayed automatically. Send a fresh command if necessary. [Telegram polling documentation](https://core.telegram.org/bots/api#getupdates)
+
+## Optional Dot-authored Telegram digest
+
+The daily 07:00 Yangon job can prefer a private-source digest while keeping the
+existing fallback and once-per-date delivery ledger. In this repository's Actions
+secrets, set `TECHPULSE_DIGEST_READ_TOKEN` to a fine-grained GitHub token with
+read-only Contents access scoped to `khantthuaung-kta/techpulse-digest-inbox`.
+Use the repository secret UI; do not put the token in code or logs.
+
+The writer saves UTF-8 plain text (at most 3,500 UTF-16 units) under
+`digests/YYYY-MM-DD.md` on the inbox's `main` branch. The date is the original
+GitHub run date in Asia/Yangon. A missing, unreadable, oversized or malformed file
+falls back to the ordinary digest. The bot preserves the text literally and
+uses the same configured Telegram destination and duplicate guard.
+
+For a no-send access check, manually run **Daily TechPulse AI digest** with
+**Send a live Telegram digest** unchecked and enter the date of a file under
+`previews/` in **dot_preview_date**. The check logs only whether the file
+validated, never its text or the token. A preview file is never sent.

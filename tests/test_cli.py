@@ -177,3 +177,35 @@ def test_telegram_reports_partial_delivery(monkeypatch):
     monkeypatch.setattr(requests, "post", lambda *args, **kwargs: next(responses))
     with pytest.raises(TelegramError, match="1/3 confirmed messages.*HTTP 429"):
         send_digest(["One", "Two", "Three"], "123:test-token", "-555")
+
+
+def test_dot_digest_uses_existing_claim_and_treats_text_as_plain(configured, monkeypatch):
+    message = 'မြန်မာ့သတင်း <b> & source https://example.org/?a=1&b=2'
+    get = Mock(return_value=message)
+    monkeypatch.setattr(cli, "read_dot_digest", get)
+    monkeypatch.setattr(cli, "collect", Mock(side_effect=AssertionError("unexpected fallback")))
+    response = requests.Response()
+    response.status_code = 200
+    response._content = b'{"ok":true,"result":{"message_id":134}}'
+    post = Mock(return_value=response)
+    monkeypatch.setattr(requests, "post", post)
+    assert cli.main(["--send"]) == 0
+    assert cli.main(["--send"]) == 0
+    get.assert_called_once()
+    post.assert_called_once()
+    payload = post.call_args.kwargs["json"]
+    assert "<b>" not in payload["text"]
+    assert unescape(payload["text"]) == message
+
+
+def test_dot_preview_is_private_and_never_posts(configured, monkeypatch, caplog, capsys):
+    preview = Mock(return_value="PRIVATE DRAFT")
+    post = Mock(side_effect=AssertionError("unexpected send"))
+    monkeypatch.setattr(cli, "read_dot_digest", preview)
+    monkeypatch.setattr(requests, "post", post)
+    caplog.set_level("INFO")
+    assert cli.main(["--check-dot-preview=2026-11-24"]) == 0
+    assert "PRIVATE DRAFT" not in caplog.text + capsys.readouterr().out
+    assert "validated" in caplog.text
+    assert preview.call_args.kwargs == {"preview": True}
+    post.assert_not_called()
