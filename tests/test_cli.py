@@ -3,7 +3,7 @@ from html import unescape
 import re
 import subprocess
 import sys
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 import requests
@@ -209,3 +209,52 @@ def test_dot_preview_is_private_and_never_posts(configured, monkeypatch, caplog,
     assert "validated" in caplog.text
     assert preview.call_args.kwargs == {"preview": True}
     post.assert_not_called()
+
+
+@pytest.mark.parametrize("fail_second", [False, True])
+def test_long_dot_edition_uses_one_multipart_claim(configured, monkeypatch, fail_second):
+    source = "\n\n".join(
+        f"{i}. မြန်မာ့သတင်း & အလုပ်အကိုင်\n"
+        + "အနှစ်ချုပ်: လုပ်ငန်းအသစ်တွေမှာ နည်းပညာကျွမ်းကျင်မှု ပိုလိုလာတယ်။ " * 7
+        + "\nဘာကြောင့်သိသင့်လဲ: လျှောက်မယ့်အလုပ်အတွက် လိုအပ်ချက်ကို ကြိုသိနိုင်တယ်။ " * 7
+        + "\nဘာလုပ်ကြည့်ရမလဲ: ကြေညာချက်ထဲက လိုအပ်တဲ့ skill ကို စာရင်းလုပ်ပါ။ " * 5
+        + f"\nhttps://example.org/news?id={i}&edition=today"
+        for i in range(1, 16)
+    )
+    response = MagicMock(status_code=200)
+    response.__enter__.return_value = response
+    raw = source.encode("utf-8")
+    response.iter_content.return_value = [raw[i:i + 4096] for i in range(0, len(raw), 4096)]
+    get = Mock(return_value=response)
+    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setenv("TECHPULSE_DIGEST_READ_TOKEN", "unit-test-placeholder")
+    monkeypatch.setattr(cli, "collect", Mock(side_effect=AssertionError("unexpected fallback")))
+    posts = []
+
+    def post(url, **kwargs):
+        response = requests.Response()
+        posts.append(kwargs["json"])
+        if len(posts) == 2 and fail_second:
+            response.status_code = 400
+            response._content = b'{"ok":false}'
+        else:
+            response.status_code = 200
+            response._content = f'{{"ok":true,"result":{{"message_id":{200 + len(posts)}}}}}'.encode()
+        return response
+
+    monkeypatch.setattr(requests, "post", post)
+    code = 1 if fail_second else 0
+    assert cli.main(["--send"]) == code
+    claim = cli.open_ledger().read(cli.delivery_date(datetime.now(UTC)))
+    assert claim is not None
+    record, _ = claim
+    expected_parts = len(cli.split_dot_digest(source))
+    assert expected_parts >= 4 and record.parts == expected_parts
+    assert cli.main(["--send"]) == code
+    assert get.call_count == 1
+    if fail_second:
+        assert len(posts) == 2 and record.status == "failed" and list(record.confirmed) == ["201"]
+    else:
+        assert len(posts) == expected_parts and record.status == "sent"
+        assert "".join(unescape(posted["text"]).split("\n\n", 1)[1] for posted in posts) == source
+    assert all(telegram_length(unescape(posted["text"])) <= TELEGRAM_LIMIT for posted in posts)
