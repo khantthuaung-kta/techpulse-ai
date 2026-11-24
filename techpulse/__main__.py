@@ -2,7 +2,8 @@
 
 import argparse
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from html import escape
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -10,6 +11,7 @@ from dotenv import load_dotenv
 from .ai_config import configured_summaries, load_summary_settings
 from .delivery import YANGON, already_claimed, deliver, delivery_date, open_ledger
 from .digest import render_digest
+from .dot_inbox import read_dot_digest
 from .interactive import run_poller
 from .ledger import LedgerError, article_fingerprints, destination_key, sent_history
 from .personalization import explain_ranking, load_preferences, rank_digest
@@ -24,6 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="Print the digest to the terminal.")
     mode.add_argument("--send", action="store_true", help="Deliver the digest to Telegram.")
+    mode.add_argument("--check-dot-preview", type=date.fromisoformat, metavar="YYYY-MM-DD",
+                      help="Verify a private inbox preview without Telegram or public output.")
     mode.add_argument("--test-telegram", action="store_true", help="Send a Telegram connection test message.")
     mode.add_argument("--poll-telegram", action="store_true", help="Run the interactive Telegram bot locally.")
     parser.add_argument("--feeds", type=Path, default=Path("feeds.toml"), help="Path to the news source registry.")
@@ -73,6 +77,28 @@ def main(argv: list[str] | None = None) -> int:
         except LedgerError as error:
             LOG.error("%s", error)
             return 1
+
+    if args.check_dot_preview is not None:
+        preview = read_dot_digest(args.check_dot_preview, preview=True)
+        if preview is None:
+            LOG.error("Could not validate the private Dot preview. Check the read secret and preview date.")
+            return 1
+        LOG.info("Private Dot preview validated; content omitted and no Telegram message sent.")
+        return 0
+
+    if args.send:
+        dot_digest = read_dot_digest(day)
+        if dot_digest is not None:
+            try:
+                if datetime.now(UTC).astimezone(YANGON).date() != day:
+                    LOG.info("Dot read crossed the Yangon date boundary. Skipping stale delivery.")
+                    return 0
+                if deliver(ledger, day, destination, [], [escape(dot_digest)], token, chat_id):
+                    LOG.info("Delivered the Dot-authored digest for %s.", day)
+                return 0
+            except (LedgerError, TelegramError) as error:
+                LOG.error("%s", error)
+                return 1
 
     try:
         feeds = load_feeds(args.feeds)
