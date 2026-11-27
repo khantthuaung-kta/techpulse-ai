@@ -1,0 +1,32 @@
+{
+  "expo/expo": {
+    "tag": "patch-project@58.0.22",
+    "title": "patch-project@58.0.22",
+    "published_at": "2026-11-26T16:26:46Z",
+    "url": "https://github.com/expo/expo/releases/tag/patch-project%4058.0.22"
+  },
+  "facebook/react": {
+    "tag": "v19.3.1",
+    "title": "19.3.1 (October 14th, 2026)",
+    "published_at": "2026-10-14T17:06:15Z",
+    "url": "https://github.com/react/react/releases/tag/v19.3.1"
+  },
+  "fastapi/fastapi": {
+    "tag": "0.165.0",
+    "title": "0.165.0",
+    "published_at": "2026-11-18T19:14:20Z",
+    "url": "https://github.com/fastapi/fastapi/releases/tag/0.165.0"
+  },
+  "microsoft/vscode": {
+    "tag": "1.148.0",
+    "title": "1.148.0",
+    "published_at": "2026-11-25T09:44:02Z",
+    "url": "https://github.com/microsoft/vscode/releases/tag/1.148.0"
+  },
+  "odoo/owl": {
+    "tag": "v3.0.0-alpha.40",
+    "title": "v3.0.0-alpha.40",
+    "published_at": "2026-06-26T12:29:27Z",
+    "url": "https://github.com/odoo/owl/releases/tag/v3.0.0-alpha.40"
+  }
+}
