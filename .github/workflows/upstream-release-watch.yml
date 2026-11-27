@@ -1,0 +1,45 @@
+name: Smart upstream release watch
+
+on:
+  schedule:
+    # 08:47 Asia/Yangon (UTC+06:30); staggered to avoid the top of the hour.
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: techpulse-release-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch upstream stable releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/update_upstream_releases.py
+      - name: Commit only real source changes
+        shell: bash
+        run: |
+          git add data/upstream-releases.json docs/upstream-release-watch.md
+          if git diff --cached --quiet; then
+            echo "No release changes; skipping commit."
+            exit 0
+          fi
+          git config user.name "khantthuaung-kta"
+          git config user.email "209433505+khantthuaung-kta@users.noreply.github.com"
+          git commit -m "data: update tracked upstream releases"
+          git push origin HEAD:main
